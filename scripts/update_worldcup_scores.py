@@ -726,7 +726,11 @@ def ordered_event_match_pairs(events: list[list[str]], matches: list[MatchInfo])
             remaining_matches.remove(best_match)
             pairs_by_event_id[id(event)] = best_match
 
-    return [(event, pairs_by_event_id[id(event)]) for event in events]
+    return [
+        (event, pairs_by_event_id[id(event)])
+        for event in events
+        if id(event) in pairs_by_event_id
+    ]
 
 
 def build_calendar(
@@ -755,15 +759,39 @@ def build_calendar(
         changed_events += int(changed)
         scored_events += int(scored)
 
-    existing_uids = {
-        prop_value(first_prop(event_props(event), "UID") or "")
-        for event in events
-    }
+    # Knockout events already present in the calendar: refresh their score
+    # from the knockout source when available, otherwise keep them as-is so
+    # they are never dropped. (Group-stage events were emitted above.)
+    knockout_by_uid = {knockout_uid(match): match for match in knockout_matches}
+    existing_uids: set[str] = set()
+    for event in events:
+        props = event_props(event)
+        try:
+            event_group_round(props)
+            continue
+        except ValueError:
+            pass
+        uid = prop_value(first_prop(props, "UID") or "")
+        existing_uids.add(uid)
+        match = knockout_by_uid.get(uid)
+        if match is not None:
+            event_output, changed, scored = build_event(event, match, now)
+            output.extend(event_output)
+            changed_events += int(changed)
+            scored_events += int(scored)
+        else:
+            output.append("BEGIN:VEVENT")
+            output.extend(event)
+            output.append("END:VEVENT")
+            scored_events += int("✅" in text_unescape(prop_value(first_prop(props, "SUMMARY") or "")))
+
+    # New knockout matches not yet in the calendar: append them.
     for match in knockout_matches:
         uid = knockout_uid(match)
         if uid in existing_uids:
             continue
         output.extend(build_new_event(match, now))
+        existing_uids.add(uid)
         changed_events += 1
         scored_events += int(match.completed)
 
