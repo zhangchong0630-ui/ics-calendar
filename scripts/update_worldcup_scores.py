@@ -22,7 +22,7 @@ DEFAULT_FIFA_API_URL = (
 DEFAULT_KNOCKOUT_API_URL = (
     "https://api.fifa.com/api/v3/calendar/matches"
     "?language=en&count=200&idCompetition=17&idSeason=285023"
-    "&from=2026-06-29&to=2026-07-20"
+    "&from=2026-06-28&to=2026-07-20"
 )
 
 TEAM_CODE_TO_CN = {
