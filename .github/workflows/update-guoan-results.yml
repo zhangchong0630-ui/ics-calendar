@@ -1,0 +1,57 @@
+name: Update Guoan results
+
+on:
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "全量对账（同步改期、新阶段赛程、亚冠赛程）"
+        type: boolean
+        default: false
+  schedule:
+    # 北京时间 17:00–次日 01:00 每小时一次，覆盖国内比赛的结束时间。
+    # 没有刚结束待回填比分的比赛时，脚本会直接退出，不请求接口也不产生提交。
+    - cron: "7 9-17 * * *"
+    # 每周一北京时间 11:07 做一次全量对账。
+    - cron: "7 3 * * 1"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-guoan-results
+  cancel-in-progress: false
+
+jobs:
+  update-results:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init .
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_REF_NAME}"
+          git checkout -B "${GITHUB_REF_NAME}" FETCH_HEAD
+
+      - name: Update Guoan ICS
+        env:
+          FULL: ${{ github.event.schedule == '7 3 * * 1' || inputs.full }}
+        run: |
+          if [ "$FULL" = "true" ]; then
+            python3 scripts/update_guoan_scores.py --full
+          else
+            python3 scripts/update_guoan_scores.py
+          fi
+
+      - name: Commit updated ICS
+        run: |
+          if git diff --quiet -- beijing-guoen-2026.ics; then
+            echo "No ICS changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add beijing-guoen-2026.ics
+          git commit -m "更新北京国安 ICS 赛果"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

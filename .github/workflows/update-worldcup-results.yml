@@ -1,9 +1,9 @@
 name: Update World Cup results
 
 on:
+  # 2026 世界杯已于 7 月结束，赛果不再变化，定时任务已关闭。
+  # 如需再跑一次，在 Actions 页面手动触发。
   workflow_dispatch:
-  schedule:
-    - cron: "12 * * * *"
 
 permissions:
   contents: write
