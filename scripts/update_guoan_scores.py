@@ -45,6 +45,10 @@ SCORE_READY_AFTER = timedelta(hours=2, minutes=30)
 # 不再让赛后模式每小时空跑（例：2026 第18轮申花主场因台风延期，补赛待定）。
 PENDING_LOOKBACK = timedelta(days=14)
 
+# 赛程刚公布（抽签结束、杯赛进入新阶段）时，接口会对尚未定时的场次返回一个
+# 格式合法的假时间做占位，try/except 拦不住。现实中没有比赛在这两个时间点开球。
+PLACEHOLDER_KICKOFF = {(23, 59), (0, 0)}
+
 
 @dataclass(frozen=True)
 class Competition:
@@ -164,6 +168,13 @@ def build_match(competition: Competition, raw: dict[str, Any], requested: dict[s
     except ValueError:
         return None
 
+    if (start.hour, start.minute) in PLACEHOLDER_KICKOFF:
+        print(
+            f"跳过 {home} vs {away}：开赛时间 {raw.get('games_time')} 是数据源的待定占位值",
+            file=sys.stderr,
+        )
+        return None
+
     # 未开赛的场次接口返回 -1。
     home_score = str(raw.get("hscore"))
     away_score = str(raw.get("gscore"))
@@ -198,6 +209,31 @@ def build_match(competition: Competition, raw: dict[str, Any], requested: dict[s
     )
 
 
+def drop_shared_kickoffs(matches: dict[str, Match]) -> dict[str, Match]:
+    """丢掉多场共用同一开赛时间的未完赛场次。
+
+    国安不可能在同一分钟开两场球，所以成批相同的 games_time 只能是数据源给未定时
+    场次填的占位值（不限于 PLACEHOLDER_KICKOFF 里的那两个时间点）。已完赛的场次有
+    比分佐证，时间是真的，不参与剔除。
+    """
+    by_start: dict[str, list[Match]] = {}
+    for match in matches.values():
+        by_start.setdefault(match.dtstart, []).append(match)
+
+    dropped: set[str] = set()
+    for dtstart, group in sorted(by_start.items()):
+        suspects = [match for match in group if not match.completed] if len(group) > 1 else []
+        if not suspects:
+            continue
+        dropped.update(match.uid for match in suspects)
+        names = "、".join(f"{match.home} vs {match.away}" for match in suspects)
+        print(
+            f"跳过共用开赛时间 {dtstart} 的 {len(suspects)} 场比赛（数据源占位值）：{names}",
+            file=sys.stderr,
+        )
+    return {uid: match for uid, match in matches.items() if uid not in dropped}
+
+
 def fetch_matches() -> dict[str, Match]:
     """抓取三项赛事里国安的全部场次，按 UID 索引。失败的赛事跳过而不中断。"""
     matches: dict[str, Match] = {}
@@ -223,7 +259,7 @@ def fetch_matches() -> dict[str, Match]:
                     matches[match.uid] = match
                     found += 1
         print(f"{competition.label}: 抓到国安 {found} 场（共 {len(stages)} 个分段）")
-    return matches
+    return drop_shared_kickoffs(matches)
 
 
 def has_score(props: dict[str, list[str]]) -> bool:
