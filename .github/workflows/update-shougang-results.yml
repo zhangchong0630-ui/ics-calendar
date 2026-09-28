@@ -1,0 +1,58 @@
+name: Update Shougang results
+
+on:
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "全量对账（同步改期、新阶段赛程、季后赛）"
+        type: boolean
+        default: false
+  schedule:
+    # 北京时间 17:00–次日 01:00 每小时一次，覆盖 CBA 常规开球时间（19:35）
+    # 与比赛结束时间。没有刚结束待回填比分的比赛时，脚本会直接退出，
+    # 不请求接口也不产生提交。
+    - cron: "7 9-17 * * *"
+    # 每周一北京时间 11:07 做一次全量对账（抓改期与季后赛公布）。
+    - cron: "7 3 * * 1"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-shougang-results
+  cancel-in-progress: false
+
+jobs:
+  update-results:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init .
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_REF_NAME}"
+          git checkout -B "${GITHUB_REF_NAME}" FETCH_HEAD
+
+      - name: Update Shougang ICS
+        env:
+          FULL: ${{ github.event.schedule == '7 3 * * 1' || inputs.full }}
+        run: |
+          if [ "$FULL" = "true" ]; then
+            python3 scripts/update_shougang_scores.py --full
+          else
+            python3 scripts/update_shougang_scores.py
+          fi
+
+      - name: Commit updated ICS
+        run: |
+          if git diff --quiet -- beijing-shougang-2026.ics; then
+            echo "No ICS changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add beijing-shougang-2026.ics
+          git commit -m "更新北京首钢 ICS 赛果"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

@@ -6,6 +6,7 @@
 
 - ⚽ 2026美加墨世界杯小组赛：`https://raw.githubusercontent.com/zhangchong0630-ui/ics-calendar/main/worldcup2026_groupstage.ics`
 - ⚽ 北京国安2026赛季：`https://raw.githubusercontent.com/zhangchong0630-ui/ics-calendar/main/beijing-guoen-2026.ics`
+- 🏀 北京首钢2026赛季：`https://raw.githubusercontent.com/zhangchong0630-ui/ics-calendar/main/beijing-shougang-2026.ics`
 
 ## 订阅方式
 
@@ -52,6 +53,44 @@ python3 scripts/update_guoan_scores.py --dry-run   # 只看会改什么
 python3 scripts/update_guoan_scores.py --full      # 全量对账并写入
 ```
 
+## 北京首钢比分更新
+
+`beijing-shougang-2026.ics` 一个文件包含北京首钢本赛季 **CBA 常规赛、季后赛、俱乐部杯**的全部比赛，按时间排序，每场保留提前 1 小时提醒。只收录北京首钢自己的场次，不含其他球队。事件标题区分是否完赛：
+
+```
+🏀 常规赛第1轮: 吉林 vs 北京首钢
+🏀 季后赛: 北京首钢 vs 广东
+✅ 常规赛第22轮: 北京首钢 87-89 青岛
+```
+
+数据源与足球相同，是直播吧数据频道背后的公开接口 `db.qiumibao.com`（CBA 联赛 id 925），返回中文队名与北京时间，无需 API key。
+
+### 更新规则
+
+`scripts/update_shougang_scores.py` 由 GitHub Actions 调度，**不是每天无条件刷新**：
+
+- **赛后模式**（北京时间 17:00–次日 01:00 每小时）：先读 ICS 判断有没有「已开赛超过 2.5 小时、但还没有比分」的比赛。没有就直接退出，不请求接口、不产生提交；有才联网回填比分。
+- **全量对账**（每周一北京时间 11:07，或手动触发时勾选 full）：跳过上面的判断完整同步一次，用于抓改期和季后赛赛程公布。
+
+其他行为：
+
+- **季后赛自动收录**：接口按赛季一次返回整季数据，季后赛对阵公布后（通常 4 月底）会出现在同一份数据里，类型为「季后赛」，由每周全量对账自动追加，无需改代码。上赛季（2025）季后赛即以此方式收录，北京首钢 7 场季后赛（5/6–5/22）全部可见。
+- **只筛单球队**：按球队 id（北京北汽 `6936`）过滤，其余 19 支球队的比赛不进入日历。
+- **计入的赛事类型**：常规赛、季后赛、俱乐部杯。季前赛、夏季联赛、潜力赛、全明星、选秀等不计入（这些比赛密度高且多为练赛性质）。
+- 开球时间以接口为准，改期会自动同步 `DTSTART`/`DTEND` 并递增 `SEQUENCE` 通知订阅端。
+- 主场比赛写入 `LOCATION`（首钢冰球馆、首都体育馆），同时设置 `X-APPLE-TRAVEL-ADVISORY-BEHAVIOR:DISABLED`，避免 Apple 日历对客场比赛弹出“该出发了”的路况提醒。
+- 已完赛场次额外在描述里保留半场比分。
+- 比分没变时沿用原来的“比分更新时间”，避免每次运行都产生无意义的改动。
+- 接口里查不到对应记录的事件原样保留，不会因为数据缺失把已有赛程抹掉。
+
+本地手动跑：
+
+```bash
+python3 scripts/update_shougang_scores.py --dry-run   # 只看会改什么
+python3 scripts/update_shougang_scores.py --full      # 全量对账并写入
+python3 scripts/update_shougang_scores.py --season 2025   # 拉某个赛季对账
+```
+
 ## 世界杯比分更新
 
 `worldcup2026_groupstage.ics` 由 `scripts/update_worldcup_scores.py` 读取 FIFA 赛程与赛果数据生成。已完赛比赛在日历标题中显示比分，未开赛比赛保持赛程标题，时间统一按北京时间写入。
@@ -62,6 +101,7 @@ python3 scripts/update_guoan_scores.py --full      # 全量对账并写入
 
 ## 脚本结构
 
-- `scripts/icslib.py` — 两个更新脚本共用的 ICS 文本工具（折行、转义、解析）
+- `scripts/icslib.py` — 各更新脚本共用的 ICS 文本工具（折行、转义、解析）
 - `scripts/update_guoan_scores.py` — 北京国安赛程与比分
+- `scripts/update_shougang_scores.py` — 北京首钢赛程与比分
 - `scripts/update_worldcup_scores.py` — 世界杯赛程与比分
