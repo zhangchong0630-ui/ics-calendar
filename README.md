@@ -105,3 +105,5 @@ python3 scripts/update_shougang_scores.py --season 2025   # 拉某个赛季对�
 - `scripts/update_guoan_scores.py` — 北京国安赛程与比分
 - `scripts/update_shougang_scores.py` — 北京首钢赛程与比分
 - `scripts/update_worldcup_scores.py` — 世界杯赛程与比分
+
+<!-- 2026-11-13: 触发 Pages 重建，恢复赛果自动上线 -->
