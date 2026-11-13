@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # 赛果更新工作流用的是 GITHUB_TOKEN 提交，不会触发 push 事件，
+  # 所以这里显式监听它们的完成事件，保证更新后立刻重新发布。
+  workflow_run:
+    workflows: ["Update Guoan results", "Update Shougang results"]
+    types: [completed]
   schedule:
     - cron: '0 * * * *'
 
